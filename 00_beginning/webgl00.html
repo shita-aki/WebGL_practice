@@ -6,13 +6,32 @@
     <title>WebGL</title>
 
     <link rel="stylesheet" type="text/css" href="webgl00.css">
-    <script type="text/javascript" src="webgl00.js"></script
+    <script type="text/javascript" src="sylvester.js"></script>
+    <script type="text/javascript" src="glUtils.js"></script>
+    <script type="text/javascript" src="webgl00.js"></script>
+
+	<script id="shader-fs" type="x-shader/x-fragment">
+		void main(void) {
+			gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+		}
+	</script>
+	<script id="shader-vs" type="x-shader/x-vertex">
+		attribute vec3 aVertexPosition;
+		
+		uniform mat4 uMVMatrix;
+		uniform mat4 uPMatrix;
+		
+		void main(void) {
+			gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+		}
+	</script>
+
   </head>
 
-  <body>
+  <body onload="start()">
     <header>
       <h1>WebGL</h1>
     </header>
-    <canvas id="canvas" width="241" height="501"> ここはCanvas </canvas>
+    <canvas id="glcanvas" width="640" height="480"> ここはCanvas </canvas>
   </body>
 </html>
