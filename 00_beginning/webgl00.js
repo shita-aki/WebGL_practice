@@ -5,7 +5,7 @@
 var gl;							//WebGLコンテキスト格納用
 var horizAspect = 480.0/640.0;	// 縦横比(なんの？)
 
-var shaderProgram;				// ？？
+var shaderProgram;				// シェーダープログラム(コンパイル/リンク済み)
 var squareVerticesBuffer;		// ？？
 var vertexPositionAttribute;		// ？？
 var perspectiveMatrix;			// ？？
@@ -38,16 +38,17 @@ function start() {
 function initWebGL(canvas) {
 /*
  * canvasからWebGLのコンテキストを取得する関数。
+ * 	canvas:コンテキストを取得する対象のcanvas
  */
+	gl = null;	// グローバル変数glをnullに初期化
 
-	// グローバル変数glをnullに初期化
-	gl = null;
-	
 	try {
-		// 標準コンテキストを取得する。失敗した場合、試験コンテキストを取得する(標準策定中時の実装？)
+		// 標準のWebGLコンテキストを取得する。失敗した場合、試験用？WebGLコンテキストを取得する(標準策定中時の実装？)
 		gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
 	}
-	catch(e) {}
+	catch(e) {
+		// エラーは無視
+	}
 	
 	// GLコンテキストを取得出来なかった場合、諦める
 	if (!gl) {
@@ -60,11 +61,10 @@ function initShaders() {
 /*
  * 
  */
+	var fragmentShader = getShader(gl, "shader-fs");		// コンパイル済みのfragmentのシェーダープログラムを読み込む
+	var vertexShader = getShader(gl, "shader-vs");		// コンパイル済みのvertexのシェーダープログラムを読み込む
 
-	var fragmentShader = getShader(gl, "shader-fs");
-	var vertexShader = getShader(gl, "shader-vs");
-
-	// シェーダープログラムを作成する(コンパイルしてリンク)
+	// シェーダープログラムを作成する(リンク)
 	shaderProgram = gl.createProgram();
 	gl.attachShader(shaderProgram, vertexShader);
 	gl.attachShader(shaderProgram, fragmentShader);
@@ -86,25 +86,27 @@ function initShaders() {
 
 function getShader(gl, id) {
 /*
- * シェーダープログラムをDOMから取得し、
+ * シェーダープログラムをDOMから取得し、コンパイルする。
+ * 	gl:WebGLコンテキスト
+ * 	id:DOM識別ID(シェーダー格納DOM識別用)
  */
-
-	var shaderScript, theSource, currentChild, shader;
+	var shaderScript;	// シェーダープログラム格納DOM指定用変数
+	var theSource;		// シェーダープログラムソースコード格納用変数
+	var currentChild;	// DOMの子要素を順に見ていくための作業用変数
+	var shader;			// コンパイル済みシェーダープログラム格納用変数
 	
-	shaderScript = document.getElementById(id);
-	
+	shaderScript = document.getElementById(id);	// シェーダープログラム格納DOMを取得
+	// シェーダープログラム格納DOMが見つからなかったら終了！
 	if (!shaderScript) {
 		return null;
 	}
 	
-	theSource = "";
-	currentChild = shaderScript.firstChild;
-	
-	while (currentChild) {
-		if (currentChild.nodeType === 3 /* currentChild.TEXT_NODE*/) {
-			theSource += currentChild.textContent;
+	theSource = "";		// ソースコード格納用変数を初期化
+	currentChild = shaderScript.firstChild;						// シェーダープログラム格納DOMの最初の子要素を初期要素として、
+	while (currentChild) {										// 順に子要素を見ていき、
+		if (currentChild.nodeType === currentChild.TEXT_NODE) {	// 子要素がテキストノードだったら、
+			theSource += currentChild.textContent;				// 子要素中のテキストをつなげてく。へ～、こんな風にソース格納していいんだ。
 		}
-		
 		currentChild = currentChild.nextSibling;
 	}
 	
@@ -117,11 +119,8 @@ function getShader(gl, id) {
 		return null;
 	}
 	
-	gl.shaderSource(shader, theSource);
-	
-	//
-	gl.compileShader(shader);
-	
+	gl.shaderSource(shader, theSource);	//
+	gl.compileShader(shader);			//
 	//
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
 		alert("An error occurred compiling the shaders: " + gl.getShaderInfoLog(shader));
