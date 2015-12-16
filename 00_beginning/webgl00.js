@@ -1,15 +1,14 @@
 /*eslint-env browser */
-
 /*globals makePerspective Matrix $V*/
 
 var gl;							//WebGLコンテキスト格納用
-var horizAspect = 480.0/640.0;	// 縦横比(なんの？)
+var horizAspect = 640.0/480.0;	// 縦横比(なんの？)
 
 var shaderProgram;				// シェーダープログラム(コンパイル/リンク済み)
-var squareVerticesBuffer;		// ？？
-var vertexPositionAttribute;		// ？？
+var vertexPositionAttribute;		// 頂点描画用変数的な何かに振るインデックス
+var squareVerticesBuffer;		// 3Dモデル格納用バッファ
 var perspectiveMatrix;			// ？？
-var mvMatrix;					// ？？
+var mvMatrix;					// 4次元の単位行列？
 
 
 function start() {
@@ -17,7 +16,6 @@ function start() {
  * HTMLが読み込まれた時に呼ばれる関数。
  * canvasからWebGLのコンテキストを取得し、コンテキストに対して色々設定を行う。
  */
-
 	var canvas = document.getElementById("glcanvas");	// canvasを取得
 	initWebGL(canvas);									// WeGLコンテキスト初期化関数を呼ぶ
 
@@ -28,8 +26,8 @@ function start() {
 		gl.depthFunc(gl.LEQUAL);								// 手前の物体が影になっている物体を隠す(透過させない)
 		gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);	// カラーバッファと空間バッファをクリア
 
-		initShaders();	// シェーダープログラムを取得/コンパイル
-		initBuffers();	// 
+		initShaders();	// シェーダーのコードを取得/コンパイル/リンクしてシェーダープログラムを作る
+		initBuffers();	// バッファ(要は3Dモデル？)を作成する
 		drawScene();	// WebGLコンテキストに描画する
 	}
 }
@@ -59,7 +57,8 @@ function initWebGL(canvas) {
 
 function initShaders() {
 /*
- * 
+ * コンパイル済みシェーダープログラムを取得し、それらをリンクしてシェーダープログラムを作成する。
+ * また、頂点描画用変数の設定を行う。
  */
 	var fragmentShader = getShader(gl, "shader-fs");		// コンパイル済みのfragmentのシェーダープログラムを読み込む
 	var vertexShader = getShader(gl, "shader-vs");		// コンパイル済みのvertexのシェーダープログラムを読み込む
@@ -78,8 +77,10 @@ function initShaders() {
 	// 作成したシェーダープログラムを、使用するシェーダープログラムとして設定
 	gl.useProgram(shaderProgram);
 	
-	// ？？
+	// シェーダーソース中の変数を頂点座標描画用の変数に設定して、インデックス番号を振る？
 	vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+	// インデックス指定で、それを使用可能にする？
+	// これに値をJavaScriptで値を設定して、GLSLに頂点座標を渡すのかな？
 	gl.enableVertexAttribArray(vertexPositionAttribute);
 }
 
@@ -110,35 +111,39 @@ function getShader(gl, id) {
 		currentChild = currentChild.nextSibling;
 	}
 	
+	// シェーダーのタイプに応じたシェーダーを作成する
 	if (shaderScript.type === "x-shader/x-fragment") {
 		shader = gl.createShader(gl.FRAGMENT_SHADER);
 	} else if (shaderScript.type === "x-shader/x-vertex") {
 		shader = gl.createShader(gl.VERTEX_SHADER);
 	} else {
-		//認識できないシェーダータイプ
+		//認識できないシェーダータイプだったら終了
 		return null;
 	}
 	
-	gl.shaderSource(shader, theSource);	//
-	gl.compileShader(shader);			//
-	//
+	gl.shaderSource(shader, theSource);	// 作成したシェーダーにシェーダーのコードを設定
+	gl.compileShader(shader);			// シェーダーコードをコンパイル
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		alert("An error occurred compiling the shaders: " + gl.getShaderInfoLog(shader));
+		// コンパイルに失敗したらエラーメッセージを表示
+		alert("シェーダーコンパイル中にエラー発生: " + gl.getShaderInfoLog(shader));
 		return null;
 	}
 	
+	// コンパイル済みシェーダープログラムを返す
 	return shader;
 }
 
 
 function initBuffers() {
 /*
- * 
+ * 3Dモデル格納バッファを作成する。
  */
-
+	// 空のバッファを作成
 	squareVerticesBuffer = gl.createBuffer();
+	// コンテキストに結び付けられるとは？バッファの形式を決める？？
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
 	
+	// 物体の座標を入れた配列
 	var vertices = [
 		 1.0,  1.0, 0.0,
 		-1.0,  1.0, 0.0,
@@ -146,42 +151,57 @@ function initBuffers() {
 		-1.0, -1.0, 0.0
 	];
 	
+	// バッファに物体を設定する。3つ目、STATITとSTREAMとDYNAMICがあるな…
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 }
 
 
 function drawScene() {
 /*
- * 
+ * シーンを描画する。
  */
 
+	// カラーバッファ、深度バッファをクリア
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
-	perspectiveMatrix = makePerspective(45, 640.0/480.0, 0.1, 100.0);
+	// makePerspectiveは、glUtils.jsの関数。カメラの位置や方向を定義？
+	perspectiveMatrix = makePerspective(45, horizAspect, 0.1, 100.0);
 	
-	loadIdentity();
-	mvTranslate([-0.0, 0.0, -6.0]);
+	loadIdentity();					// 行列演算。↓に少し記載
+	mvTranslate([-0.0, 0.0, -6.0]); // 行列演算。↓に少し記載
 	
-	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
+	// 頂点属性に頂点データを設定するそうな
 	gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+	// これはちょっと意味が分からない
 	setMatrixUniforms();
+	// やっと描画します！
 	gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
 
 function loadIdentity() {
+	// Matrixはsylvester.jsで定義されてる行列演算用関数か？
+	// ちょっとsylvester.jsのソース見てみたけど、
+	// Matrix.I(x)は x次元の単位行列を作る関数のようだが、自信なし
 	mvMatrix = Matrix.I(4);
 }
 
 function multMatrix(m) {
+	// Matrix.x(matrix)もsylvester.jsの関数だけど、追いきれない…
+	// 渡されたmatrixと自分(今回は単位行列)を掛け合わせてるのかなぁ…？
 	mvMatrix = mvMatrix.x(m);
 }
 
 function mvTranslate(v) {
+	// Matrix.Translation(m)はglUtils.jsで定義されている。
+	// Translationのコード簡単だけど、やっている事の意味が分からない。出来た行列にどんな意味があるんだろう？
+	// ensure4x4は、4x4より小さい行列を4x4の行列に拡張する。追加部分は単位行列と同じ値。
 	multMatrix(Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4());
 }
 
 function setMatrixUniforms() {
+	// 疲れてきた…ｗ
+	// ユニフォーム変数ってどんな意味があるんだ？まあおいおい…
 	var pUniform	 = gl.getUniformLocation(shaderProgram, "uPMatrix");
 	gl.uniformMatrix4fv(pUniform, false, new Float32Array(perspectiveMatrix.flatten()));
 	
