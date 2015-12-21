@@ -11,18 +11,25 @@
     <script type="text/javascript" src="webgl00.js"></script>
 
 	<script id="shader-fs" type="x-shader/x-fragment">
+		varying lowp vec4 vColor;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
+		
 		void main(void) {
-			gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+			gl_FragColor = vColor;	// gl_FragColorは色を設定する組み込み変数っぽい。
+									// 絶対fragmentシェーダー内に書かれないとダメなようだ
 		}
 	</script>
 	<script id="shader-vs" type="x-shader/x-vertex">
-		attribute vec3 aVertexPosition;
-		
-		uniform mat4 uMVMatrix;
+		attribute vec3 aVertexPosition;	// attributeはvertexシェーダーで使用する変数？？
+		attribute vec4 aVertexColor;	// WebGL APIを通してJavaScriptで何かしてる
+	
+		uniform mat4 uMVMatrix;	// uniformはグローバル変数のようだ。WebGL APIを通してJavaScriptから行列を設定してるぞ
 		uniform mat4 uPMatrix;
+		
+		varying lowp vec4 vColor;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
 		
 		void main(void) {
 			gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+			vColor = aVertexColor;
 		}
 	</script>
 

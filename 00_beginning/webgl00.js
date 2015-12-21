@@ -5,9 +5,11 @@ var gl;							//WebGLコンテキスト格納用
 var horizAspect = 640.0/480.0;	// 縦横比(なんの？)
 
 var shaderProgram;				// シェーダープログラム(コンパイル/リンク済み)
-var vertexPositionAttribute;		// 頂点描画用変数的な何かに振るインデックス
-var squareVerticesBuffer;		// 3Dモデル格納用バッファ
-var perspectiveMatrix;			// ？？
+var vertexPositionAttribute;		// 頂点座標用変数的な何かに振るインデックス
+var vertexColorAttribute;		// 頂点カラー用変数的な何かに振るインデックス
+var squareVerticesBuffer;		// 3Dモデルの頂点座標格納用バッファ
+var squareVerticesColorBuffer;	// 3Dモデルの頂点カラー格納用バッファ
+var perspectiveMatrix;			// 透視投影変換行列らしい
 var mvMatrix;					// 4次元の単位行列？
 
 
@@ -77,11 +79,15 @@ function initShaders() {
 	// 作成したシェーダープログラムを、使用するシェーダープログラムとして設定
 	gl.useProgram(shaderProgram);
 	
-	// シェーダーソース中の変数を頂点座標描画用の変数に設定して、インデックス番号を振る？
+	// シェーダーソース中の変数を頂点座標用の変数に設定して、インデックス番号を振る？
 	vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
 	// インデックス指定で、それを使用可能にする？
-	// これに値をJavaScriptで値を設定して、GLSLに頂点座標を渡すのかな？
 	gl.enableVertexAttribArray(vertexPositionAttribute);
+
+	// シェーダーソース中の変数を頂点座標のカラー用の変数に設定して、インデックス番号を振る？
+	vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+	// インデックス指定で、それを使用可能にする？
+	gl.enableVertexAttribArray(vertexColorAttribute);
 }
 
 
@@ -140,19 +146,31 @@ function initBuffers() {
  */
 	// 空のバッファを作成
 	squareVerticesBuffer = gl.createBuffer();
-	// コンテキストに結び付けられるとは？バッファの形式を決める？？
+	// コンテキストに結び付けて、そのバッファに対する操作を可能にする？
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
-	
-	// 物体の座標を入れた配列
+	// 物体の頂点座標を入れた配列
 	var vertices = [
 		 1.0,  1.0, 0.0,
 		-1.0,  1.0, 0.0,
 		 1.0, -1.0, 0.0,
 		-1.0, -1.0, 0.0
-	];
-	
-	// バッファに物体を設定する。3つ目、STATITとSTREAMとDYNAMICがあるな…
+	];	
+	// バッファに頂点座標を設定する。3つ目、STATITとSTREAMとDYNAMICがあるな…
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+	
+	// 空のバッファを作成
+	squareVerticesColorBuffer = gl.createBuffer();
+	// コンテキストに結び付けて、そのバッファに対する操作を可能にする？
+	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesColorBuffer);
+	// 各頂点のカラーを入れた配列
+	var colors = [
+		1.0, 1.0, 1.0, 1.0,		// 白
+		1.0, 0.0, 0.0, 1.0,		// 赤
+		0.0, 1.0, 0.0, 1.0,		// 緑
+		0.0, 0.0, 1.0, 1.0		// 青
+	];
+	// バッファにカラー配列を設定する
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 }
 
 
@@ -164,14 +182,18 @@ function drawScene() {
 	// カラーバッファ、深度バッファをクリア
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
-	// makePerspectiveは、glUtils.jsの関数。カメラの位置や方向を定義？
+	// makePerspectiveはglUtils.jsの関数、透視投影変換行列を作成する
 	perspectiveMatrix = makePerspective(45, horizAspect, 0.1, 100.0);
 	
 	loadIdentity();					// 行列演算。↓に少し記載
 	mvTranslate([-0.0, 0.0, -6.0]); // 行列演算。↓に少し記載
 	
 	// 頂点属性に頂点データを設定するそうな
+	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
 	gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+	// 頂点属性にカラーデータを設定する…のか？
+	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesColorBuffer);
+	gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
 	// これはちょっと意味が分からない
 	setMatrixUniforms();
 	// やっと描画します！
@@ -200,11 +222,14 @@ function mvTranslate(v) {
 }
 
 function setMatrixUniforms() {
-	// 疲れてきた…ｗ
-	// ユニフォーム変数ってどんな意味があるんだ？まあおいおい…
+	// uniformはシェーダーのグローバル変数みたいよ。
+	// シェーダープログラムにJavaScrptから値を渡す役目をしてるのかな。
+
+	// これは、カメラっていうか画面っていうか、に投影するための行列(透視投影行列)を渡している
 	var pUniform	 = gl.getUniformLocation(shaderProgram, "uPMatrix");
 	gl.uniformMatrix4fv(pUniform, false, new Float32Array(perspectiveMatrix.flatten()));
 	
+	// mvMatixが何の行列か分かんないけど、シェーダーに渡してる。
 	var mvUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
 	gl.uniformMatrix4fv(mvUniform, false, new Float32Array(mvMatrix.flatten()));
 }
