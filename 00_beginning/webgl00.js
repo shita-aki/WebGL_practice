@@ -10,7 +10,8 @@ var vertexColorAttribute;		// 頂点カラー用変数的な何かに振るイ�
 var squareVerticesBuffer;		// 3Dモデルの頂点座標格納用バッファ
 var squareVerticesColorBuffer;	// 3Dモデルの頂点カラー格納用バッファ
 var perspectiveMatrix;			// 透視投影変換行列らしい
-var mvMatrix;					// 4次元の単位行列？
+var mvMatrix;					// モデルビュー行列だってよ
+var mvMatrixStack = [];			// 行列を保存しておくスタック
 
 
 function start() {
@@ -178,9 +179,8 @@ function drawScene() {
 /*
  * シーンを描画する。
  */
-
-	// カラーバッファ、深度バッファをクリア
-	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	var squareRotation = 0.0;	// モデルの角度(ラジアン)
+	var lastSquareUpdateTime;	// 最後にモデルの角度を算出した時の時間(時間で角度を決めるため)
 	
 	// makePerspectiveはglUtils.jsの関数、透視投影変換行列を作成する
 	perspectiveMatrix = makePerspective(45, horizAspect, 0.1, 100.0);
@@ -194,42 +194,116 @@ function drawScene() {
 	// 頂点属性にカラーデータを設定する…のか？
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesColorBuffer);
 	gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
-	// これはちょっと意味が分からない
+
+	// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
 	setMatrixUniforms();
-	// やっと描画します！
-	gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+	// 定期的に(モデルを動かしながら)描画する。
+	// (サイトの説明だけ見て作ったから、インターバルで呼ばれる関数の中身がサイトのサンプルとは違うかも)
+	setInterval(function() {
+
+		// カラーバッファ、深度バッファをクリア
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		
+		// 現在のモデルビュー行列を保存
+		mvPushMatrix();
+		// モデルを回転させる(行列を作成しモデルビュー行列かける)
+		mvRotate(squareRotation, [1, 0, 1]);
+		
+		// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
+		setMatrixUniforms();
+		// やっと描画します！
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+	
+		// 保存していたモデルビュー行列を復帰
+		mvMatrix = mvPopMatrix();
+		
+		// 前回回転させた時との時間差分から、次の回転角を求める
+		var currentTime = (new Date).getTime();
+		if (lastSquareUpdateTime) {
+			var delta = currentTime - lastSquareUpdateTime;
+			squareRotation = squareRotation + (30 * delta) / 1000.0;		// 約12秒で360[度]
+		}
+		lastSquareUpdateTime = currentTime;
+
+	}, 66);
 }
 
 
 function loadIdentity() {
-	// Matrixはsylvester.jsで定義されてる行列演算用関数か？
-	// ちょっとsylvester.jsのソース見てみたけど、
-	// Matrix.I(x)は x次元の単位行列を作る関数のようだが、自信なし
+/*
+ * Matrixはsylvester.jsで定義されてる行列演算用関数か？
+ * ちょっとsylvester.jsのソース見てみたけど、
+ * Matrix.I(x)は x次元の単位行列を作る関数のようだが、自信なし
+ */
 	mvMatrix = Matrix.I(4);
 }
 
 function multMatrix(m) {
-	// Matrix.x(matrix)もsylvester.jsの関数だけど、追いきれない…
-	// 渡されたmatrixと自分(今回は単位行列)を掛け合わせてるのかなぁ…？
+/*
+ * Matrix.x(matrix)もsylvester.jsの関数だけど、追いきれない…
+ * 渡されたmatrixと自分(今回は単位行列)を掛け合わせてるのかなぁ…？
+ */
 	mvMatrix = mvMatrix.x(m);
 }
 
 function mvTranslate(v) {
-	// Matrix.Translation(m)はglUtils.jsで定義されている。
-	// Translationのコード簡単だけど、やっている事の意味が分からない。出来た行列にどんな意味があるんだろう？
-	// ensure4x4は、4x4より小さい行列を4x4の行列に拡張する。追加部分は単位行列と同じ値。
+/*
+ * Matrix.Translation(m)はglUtils.jsで定義されている。
+ * Translationのコード簡単だけど、やっている事の意味が分からない。出来た行列にどんな意味があるんだろう？
+ * ensure4x4は、4x4より小さい行列を4x4の行列に拡張する。追加部分は単位行列と同じ値。
+ */
 	multMatrix(Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4());
 }
 
 function setMatrixUniforms() {
-	// uniformはシェーダーのグローバル変数みたいよ。
-	// シェーダープログラムにJavaScrptから値を渡す役目をしてるのかな。
-
+/*
+ * uniformはシェーダーのグローバル変数みたいよ。
+ * シェーダープログラムにJavaScrptから値を渡す役目をしてるのかな。
+ */
 	// これは、カメラっていうか画面っていうか、に投影するための行列(透視投影行列)を渡している
 	var pUniform	 = gl.getUniformLocation(shaderProgram, "uPMatrix");
 	gl.uniformMatrix4fv(pUniform, false, new Float32Array(perspectiveMatrix.flatten()));
 	
 	// mvMatixが何の行列か分かんないけど、シェーダーに渡してる。
+	// モデルを動かす時に使用する行列？？
 	var mvUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
 	gl.uniformMatrix4fv(mvUniform, false, new Float32Array(mvMatrix.flatten()));
+}
+
+function mvPushMatrix (m) {
+/*
+ * 受け取った行列を、行列保存用スタックに格納する
+ *   m:行列
+ */
+	if (m) {
+		// mを渡されたらそれを格納
+		mvMatrixStack.push(m.dup());
+		mvMatrix = m.dup();
+	} else {
+		// mを渡されてなかったらモデルビュー行列を格納
+		mvMatrixStack.push(mvMatrix.dup());
+	}
+}
+
+function mvPopMatrix () {
+/*
+ * 行列保存用スタックから行列を読み込みreturnする
+ */
+	if (!mvMatrixStack.length) {
+		Error ("行列スタックが空だから取ってこられません。");
+	}
+	return mvMatrixStack.pop();
+}
+
+function mvRotate (angle, V) {
+/*
+ *  モデルを回転させるモデルビュー行列を作成する(で合ってる？)
+ *   angle:角度(度)
+ *   V    :回転軸([x, y, z]で回転させる軸が1)
+ */
+	var inRadians = angle * Math.PI / 180.0;
+	
+	var m = Matrix.Rotation(inRadians, $V([V[0], V[1], V[2]])).ensure4x4();
+	multMatrix(m);
 }
