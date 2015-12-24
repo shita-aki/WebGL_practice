@@ -182,11 +182,20 @@ function drawScene() {
 	var squareRotation = 0.0;	// モデルの角度(ラジアン)
 	var lastSquareUpdateTime;	// 最後にモデルの角度を算出した時の時間(時間で角度を決めるため)
 	
+	// モデルの絶対移動量(初期値)
+	var squareXOffset = 0.0;
+	var squareYOffset = 0.0;
+	var squareZOffset = -10.0;
+	// 1回に移動させる量
+	var xIncValue = 0.2;
+	var yIncValue = -0.4;
+	var zIncValue = 0.3;
+
 	// makePerspectiveはglUtils.jsの関数、透視投影変換行列を作成する
 	perspectiveMatrix = makePerspective(45, horizAspect, 0.1, 100.0);
 	
 	loadIdentity();					// 行列演算。↓に少し記載
-	mvTranslate([-0.0, 0.0, -6.0]); // 行列演算。↓に少し記載
+//	mvTranslate([-0.0, 0.0, -6.0]); // 行列演算。↓に少し記載
 	
 	// 頂点属性に頂点データを設定するそうな
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
@@ -207,7 +216,10 @@ function drawScene() {
 		
 		// 現在のモデルビュー行列を保存
 		mvPushMatrix();
-		// モデルを回転させる(行列を作成しモデルビュー行列かける)
+
+		// モデルを平行移動させる(モデルビュー行列を作成する)
+		mvTranslate([squareXOffset, squareYOffset, squareZOffset]);
+		// モデルを回転させる(モデルビュー行列を作成する)
 		mvRotate(squareRotation, [1, 0, 1]);
 		
 		// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
@@ -217,11 +229,22 @@ function drawScene() {
 	
 		// 保存していたモデルビュー行列を復帰
 		mvMatrix = mvPopMatrix();
-		
-		// 前回回転させた時との時間差分から、次の回転角を求める
-		var currentTime = (new Date).getTime();
+				
+		// 前回回転させた時との時間差分から、次の回転角および位置を求める
+		var currentTime = (new Date()).getTime();
+		var delta = currentTime - lastSquareUpdateTime;
 		if (lastSquareUpdateTime) {
-			var delta = currentTime - lastSquareUpdateTime;
+			// 次の位置を算出
+			squareXOffset = squareXOffset + xIncValue * ((10 * delta) / 1000);
+			squareYOffset = squareYOffset + yIncValue * ((10 * delta) / 1000);
+			squareZOffset = squareZOffset + zIncValue * ((10 * delta) / 1000);		
+			if (Math.abs(squareYOffset) > 3.0) {
+				xIncValue = - xIncValue;
+				yIncValue = - yIncValue;
+				zIncValue = - zIncValue;
+			}
+
+			// 次の角度を算出
 			squareRotation = squareRotation + (30 * delta) / 1000.0;		// 約12秒で360[度]
 		}
 		lastSquareUpdateTime = currentTime;
@@ -241,8 +264,8 @@ function loadIdentity() {
 
 function multMatrix(m) {
 /*
- * Matrix.x(matrix)もsylvester.jsの関数だけど、追いきれない…
- * 渡されたmatrixと自分(今回は単位行列)を掛け合わせてるのかなぁ…？
+ * 渡されたmatrixと自分自身を掛け合わせて、新しい行列を作成する。
+ * (今までのモデルビュー行列に、新しい変換行列を掛け合わせ、新しいモデルビュー行列を作成する。)
  */
 	mvMatrix = mvMatrix.x(m);
 }
@@ -250,8 +273,9 @@ function multMatrix(m) {
 function mvTranslate(v) {
 /*
  * Matrix.Translation(m)はglUtils.jsで定義されている。
- * Translationのコード簡単だけど、やっている事の意味が分からない。出来た行列にどんな意味があるんだろう？
+ * Translationは、3×4の行列を作って平行移動量[X, Y, Z]を[0][3]～[2][3]に並べて、平行移動行列作成の前準備。
  * ensure4x4は、4x4より小さい行列を4x4の行列に拡張する。追加部分は単位行列と同じ値。
+ * Translatationで作成した行列を4x4に拡張して、[x, y, z, 1]を平行移動させる行列を作る。
  */
 	multMatrix(Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4());
 }
