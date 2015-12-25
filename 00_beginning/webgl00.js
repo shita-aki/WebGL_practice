@@ -8,7 +8,8 @@ var shaderProgram;				// シェーダープログラム(コンパイル/リン�
 var vertexPositionAttribute;		// 頂点座標用変数的な何かに振るインデックス
 var vertexColorAttribute;		// 頂点カラー用変数的な何かに振るインデックス
 var squareVerticesBuffer;		// 3Dモデルの頂点座標格納用バッファ
-var squareVerticesColorBuffer;	// 3Dモデルの頂点カラー格納用バッファ
+var cubeVerticesColorBuffer;		// 3Dモデルの頂点カラー格納用バッファ
+var cubeVerticesIndexBuffer;		// 3Dモデルの面(三角形)毎の頂点インデックス格納用バッファ
 var perspectiveMatrix;			// 透視投影変換行列らしい
 var mvMatrix;					// モデルビュー行列だってよ
 var mvMatrixStack = [];			// 行列を保存しておくスタック
@@ -149,29 +150,90 @@ function initBuffers() {
 	squareVerticesBuffer = gl.createBuffer();
 	// コンテキストに結び付けて、そのバッファに対する操作を可能にする？
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
-	// 物体の頂点座標を入れた配列
+	// モデルの、面毎に頂点座標を並べた配列
+	// 下の方で頂点のインデックスを指定して面を作ってるから、ここは頂点8個だけ定義すればいんじゃないの？
+	// …と思ったけど、すぐ下のカラーの処理のコメントを書いてて、ダメだと気付いた。
+	// 同じ頂点でも面によって色が違うから、頂点は面毎に全部用意しなければならない。
+	// テクスチャ張る場合は違うのかな？
 	var vertices = [
-		 1.0,  1.0, 0.0,
-		-1.0,  1.0, 0.0,
-		 1.0, -1.0, 0.0,
-		-1.0, -1.0, 0.0
+		// 前面
+		-1.0, -1.0,  1.0,
+		 1.0, -1.0,  1.0,
+		 1.0,  1.0,  1.0,
+		-1.0,  1.0,  1.0,
+
+		// 後面
+		-1.0, -1.0, -1.0,
+		-1.0,  1.0, -1.0,
+		 1.0,  1.0, -1.0,
+		 1.0, -1.0, -1.0,
+		
+		// 上面
+		-1.0,  1.0, -1.0,
+		-1.0,  1.0,  1.0,
+		 1.0,  1.0,  1.0,
+		 1.0,  1.0, -1.0,
+		
+		// 下面
+		-1.0, -1.0, -1.0,
+		 1.0, -1.0, -1.0,
+		 1.0, -1.0,  1.0,
+		-1.0, -1.0,  1.0,
+		
+		// 右面
+		 1.0, -1.0, -1.0,
+		 1.0,  1.0, -1.0,
+		 1.0,  1.0,  1.0,
+		 1.0, -1.0,  1.0,
+		
+		// 左面
+		-1.0, -1.0, -1.0,
+		-1.0, -1.0,  1.0,
+		-1.0,  1.0,  1.0,
+		-1.0,  1.0, -1.0
 	];	
 	// バッファに頂点座標を設定する。3つ目、STATITとSTREAMとDYNAMICがあるな…
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 	
 	// 空のバッファを作成
-	squareVerticesColorBuffer = gl.createBuffer();
+	cubeVerticesColorBuffer = gl.createBuffer();
 	// コンテキストに結び付けて、そのバッファに対する操作を可能にする？
-	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesColorBuffer);
-	// 各頂点のカラーを入れた配列
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
+	// 各面のカラーを入れた配列
 	var colors = [
-		1.0, 1.0, 1.0, 1.0,		// 白
-		1.0, 0.0, 0.0, 1.0,		// 赤
-		0.0, 1.0, 0.0, 1.0,		// 緑
-		0.0, 0.0, 1.0, 1.0		// 青
+		[1.0, 1.0, 1.0, 1.0],	// 前面：白
+		[1.0, 0.0, 0.0, 1.0],	// 後面：赤
+		[0.0, 1.0, 0.0, 1.0],	// 上面：緑
+		[0.0, 0.0, 1.0, 1.0],	// 下面：青
+		[1.0, 1.0, 0.0, 1.0],	// 右面：黄
+		[1.0, 0.0, 1.0, 1.0]		// 左面：紫
 	];
+	// 各面(6面)の各頂点(4個)毎にカラーデータを配列に並べる(24個×4次元ベクトル(RGBα)なんで値は96個)
+	var generatedColors = [];
+	for (var j=0; j<6; j++) {
+		var c = colors[j];
+		for (var i=0; i<4; i++) {
+			generatedColors = generatedColors.concat(c);
+		}
+	}
 	// バッファにカラー配列を設定する
-	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(generatedColors), gl.STATIC_DRAW);
+
+	// 例によって空のバッファを作成
+	cubeVerticesIndexBuffer = gl.createBuffer();
+	// コンテキストに結び付けるらしいぞ
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
+	// 面(三角形)毎の頂点のインデックスを並べた配列
+	var cubeVertexIndices = [
+		 0,  1,  2,    0,  2,  3,	//
+		 4,  5,  6,    4,  6,  7,	//
+		 8,  9, 10,    8, 10, 11,	//
+		12, 13, 14,   12, 14, 15,	//
+		16, 17, 18,   16, 18, 19,	//
+		20, 21, 22,   20, 22, 23		//
+	];
+	// バッファに
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cubeVertexIndices), gl.STATIC_DRAW);
 }
 
 
@@ -187,22 +249,23 @@ function drawScene() {
 	var squareYOffset = 0.0;
 	var squareZOffset = -10.0;
 	// 1回に移動させる量
-	var xIncValue = 0.2;
-	var yIncValue = -0.4;
+	var xIncValue = 0.1;
+	var yIncValue = -0.2;
 	var zIncValue = 0.3;
 
 	// makePerspectiveはglUtils.jsの関数、透視投影変換行列を作成する
 	perspectiveMatrix = makePerspective(45, horizAspect, 0.1, 100.0);
 	
 	loadIdentity();					// 行列演算。↓に少し記載
-//	mvTranslate([-0.0, 0.0, -6.0]); // 行列演算。↓に少し記載
 	
 	// 頂点属性に頂点データを設定するそうな
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
 	gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
 	// 頂点属性にカラーデータを設定する…のか？
-	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesColorBuffer);
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
 	gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
+	// ↓これ、サイトでは記述されてたけど、要る？
+//	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
 
 	// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
 	setMatrixUniforms();
@@ -220,12 +283,12 @@ function drawScene() {
 		// モデルを平行移動させる(モデルビュー行列を作成する)
 		mvTranslate([squareXOffset, squareYOffset, squareZOffset]);
 		// モデルを回転させる(モデルビュー行列を作成する)
-		mvRotate(squareRotation, [1, 0, 1]);
+		mvRotate(squareRotation, [1, 1, 1]);
 		
 		// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
 		setMatrixUniforms();
 		// やっと描画します！
-		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+		gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
 	
 		// 保存していたモデルビュー行列を復帰
 		mvMatrix = mvPopMatrix();
@@ -249,7 +312,7 @@ function drawScene() {
 		}
 		lastSquareUpdateTime = currentTime;
 
-	}, 66);
+	}, 33);
 }
 
 
