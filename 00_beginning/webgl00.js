@@ -6,10 +6,11 @@ var horizAspect = 640.0/480.0;	// 縦横比(なんの？)
 
 var shaderProgram;				// シェーダープログラム(コンパイル/リンク済み)
 var vertexPositionAttribute;		// 頂点座標用変数的な何かに振るインデックス
-var vertexColorAttribute;		// 頂点カラー用変数的な何かに振るインデックス
+var textureCoordAttribute;		// テクスチャー用変数的な何かに振るインデックス
 var squareVerticesBuffer;		// 3Dモデルの頂点座標格納用バッファ
-var cubeVerticesColorBuffer;		// 3Dモデルの頂点カラー格納用バッファ
+var cubeVerticesTextureCoordBuffer;//3Dモデルのテクスチャ格納用バッファ
 var cubeVerticesIndexBuffer;		// 3Dモデルの面(三角形)毎の頂点インデックス格納用バッファ
+var cubeTexture;					// 3Dモデルに張るテクスチャー(全面を1枚にしてる)
 var perspectiveMatrix;			// 透視投影変換行列らしい
 var mvMatrix;					// モデルビュー行列だってよ
 var mvMatrixStack = [];			// 行列を保存しておくスタック
@@ -32,6 +33,8 @@ function start() {
 
 		initShaders();	// シェーダーのコードを取得/コンパイル/リンクしてシェーダープログラムを作る
 		initBuffers();	// バッファ(要は3Dモデル？)を作成する
+		initTextures();	// テクスチャ初期化関数呼び出し
+
 		drawScene();	// WebGLコンテキストに描画する
 	}
 }
@@ -86,10 +89,10 @@ function initShaders() {
 	// インデックス指定で、それを使用可能にする？
 	gl.enableVertexAttribArray(vertexPositionAttribute);
 
-	// シェーダーソース中の変数を頂点座標のカラー用の変数に設定して、インデックス番号を振る？
-	vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+	// シェーダーソース中の変数を頂点座標のテクスチャー用の変数に設定して、インデックス番号を振る？
+	textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
 	// インデックス指定で、それを使用可能にする？
-	gl.enableVertexAttribArray(vertexColorAttribute);
+	gl.enableVertexAttribArray(textureCoordAttribute);
 }
 
 
@@ -196,28 +199,26 @@ function initBuffers() {
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 	
 	// 空のバッファを作成
-	cubeVerticesColorBuffer = gl.createBuffer();
+	cubeVerticesTextureCoordBuffer = gl.createBuffer();
 	// コンテキストに結び付けて、そのバッファに対する操作を可能にする？
-	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
-	// 各面のカラーを入れた配列
-	var colors = [
-		[1.0, 1.0, 1.0, 1.0],	// 前面：白
-		[1.0, 0.0, 0.0, 1.0],	// 後面：赤
-		[0.0, 1.0, 0.0, 1.0],	// 上面：緑
-		[0.0, 0.0, 1.0, 1.0],	// 下面：青
-		[1.0, 1.0, 0.0, 1.0],	// 右面：黄
-		[1.0, 0.0, 1.0, 1.0]		// 左面：紫
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesTextureCoordBuffer);
+	// 各面に張るテクスチャの画像上の座標(正規化した値)を定義
+	var textureCoordinates = [
+		// 前面
+		0.0, 0.0, 0.25, 0.0, 0.25, 0.5, 0.0, 0.5,
+		// 後面
+		0.5, 0.5, 0.75, 0.5, 0.75, 1.0, 0.5, 1.0,
+		// 上面
+		0.25, 0.0, 0.5, 0.0, 0.5, 0.5, 0.25, 0.5,
+		// 下面
+		0.25, 0.5, 0.5, 0.5, 0.5, 1.0, 0.25, 1.0,
+		// 右面
+		0.5, 0.0, 0.75, 0.0, 0.75, 0.5, 0.5, 0.5,
+		// 左面
+		0.0, 0.5, 0.25, 0.5, 0.25, 1.0, 0.0, 1.0
 	];
-	// 各面(6面)の各頂点(4個)毎にカラーデータを配列に並べる(24個×4次元ベクトル(RGBα)なんで値は96個)
-	var generatedColors = [];
-	for (var j=0; j<6; j++) {
-		var c = colors[j];
-		for (var i=0; i<4; i++) {
-			generatedColors = generatedColors.concat(c);
-		}
-	}
-	// バッファにカラー配列を設定する
-	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(generatedColors), gl.STATIC_DRAW);
+	// バッファに各面に張るテクスチャの座標(正規化されたもの)の配列を設定する
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
 
 	// 例によって空のバッファを作成
 	cubeVerticesIndexBuffer = gl.createBuffer();
@@ -236,6 +237,32 @@ function initBuffers() {
 	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cubeVertexIndices), gl.STATIC_DRAW);
 }
 
+function initTextures () {
+/*
+ * テクスチャの初期化を行う
+ */
+	cubeTexture = gl.createTexture();	// テクスチャを取得
+	var cubeImage = new Image();			// テクスチャに張る画像を作成(空)
+	// 画像が読み込めた場合に呼び出す関数を設定(テクスチャの設定を行う関数)
+	cubeImage.onload = function() {handleTextureLoaded(cubeImage, cubeTexture);};
+	cubeImage.src = "dice.png";			// 画像を設定
+}
+
+function handleTextureLoaded (image, texture) {
+/*
+ * テクスチャの各種設定を行う
+ *   image  :テクスチャに設定する画像
+ *   texture:テクスチャ(WebGLで取得した)
+ */
+	gl.bindTexture(gl.TEXTURE_2D, texture);	// テクスチャをバインド
+	// テクスチャに画像を設定する
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+	// テクスチャが画面上で拡大/縮小表示される場合の補間の仕方を設定
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);					// 拡大はリニア
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);	// 縮小はよく知らんミップマップ
+	gl.generateMipmap(gl.TEXTURE_2D);		// よく分からんがミップマップを作製
+	//gl.bindTexture(gl.TEXTURE_2D, null);	// 今回はバインドしたままで行きまっす
+}
 
 function drawScene() {
 /*
@@ -261,11 +288,15 @@ function drawScene() {
 	// 頂点属性に頂点データを設定するそうな
 	gl.bindBuffer(gl.ARRAY_BUFFER, squareVerticesBuffer);
 	gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
-	// 頂点属性にカラーデータを設定する…のか？
-	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesColorBuffer);
-	gl.vertexAttribPointer(vertexColorAttribute, 4, gl.FLOAT, false, 0, 0);
-	// ↓これ、サイトでは記述されてたけど、要る？
-//	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
+	
+	// ★★★
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesTextureCoordBuffer);
+	gl.vertexAttribPointer(textureCoordAttribute, 2, gl.FLOAT, false, 0, 0);
+	
+	// 使用するテクスチャの設定をする…のか？
+	gl.activeTexture(gl.TEXTURE0);
+	gl.bindTexture(gl.TEXTURE_2D, cubeTexture);
+	gl.uniform1i(gl.getUniformLocation(shaderProgram, "uSampler"), 0);
 
 	// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
 	setMatrixUniforms();
@@ -284,7 +315,7 @@ function drawScene() {
 		mvTranslate([squareXOffset, squareYOffset, squareZOffset]);
 		// モデルを回転させる(モデルビュー行列を作成する)
 		mvRotate(squareRotation, [1, 1, 1]);
-		
+
 		// これはちょっと意味が分からない。モデルを画面に投影する際に適応するマトリクスを作ってシェーダーに設定してるような…
 		setMatrixUniforms();
 		// やっと描画します！
@@ -301,9 +332,13 @@ function drawScene() {
 			squareXOffset = squareXOffset + xIncValue * ((10 * delta) / 1000);
 			squareYOffset = squareYOffset + yIncValue * ((10 * delta) / 1000);
 			squareZOffset = squareZOffset + zIncValue * ((10 * delta) / 1000);		
-			if (Math.abs(squareYOffset) > 3.0) {
+			if (Math.abs(squareXOffset) > 4.0) {
 				xIncValue = - xIncValue;
+			}
+			if (Math.abs(squareYOffset) > 3.0) {
 				yIncValue = - yIncValue;
+			}
+			if (Math.abs(squareZOffset + 10) > 5.0) {
 				zIncValue = - zIncValue;
 			}
 
@@ -312,7 +347,7 @@ function drawScene() {
 		}
 		lastSquareUpdateTime = currentTime;
 
-	}, 33);
+	}, 17);
 }
 
 

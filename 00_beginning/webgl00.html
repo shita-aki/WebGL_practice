@@ -11,34 +11,37 @@
     <script type="text/javascript" src="webgl00.js"></script>
 
 	<script id="shader-fs" type="x-shader/x-fragment">
-		varying lowp vec4 vColor;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
+		varying highp vec2 vTextureCoord;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
+		
+		// uniformはグローバル変数のようだ。WebGL APIを通してJavaScriptからテクスチャの設定してる…のか？
+		uniform sampler2D uSampler;
 		
 		void main(void) {
-			gl_FragColor = vColor;	// gl_FragColorは色を設定する組み込み変数っぽい
-									// 絶対fragmentシェーダー内に書かれないとダメなようだ
+			// gl_FragColorは色を設定する組み込み変数っぽい
+			// 絶対fragmentシェーダー内に書かれないとダメなようだ
+			// テクスチャの座標から色を求めて設定している
+			gl_FragColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
 		}
 	</script>
+	
 	<script id="shader-vs" type="x-shader/x-vertex">
 		// attributeはvertexシェーダーで使用する変数？WebGL APIを通してJavaScriptで何かしてる
 		attribute vec3 aVertexPosition;	// 頂点座標を表す変数として指定してるっぽい
-		attribute vec4 aVertexColor;	// 頂点カラーを表す変数として指定してるっぽい
+		attribute vec2 aTextureCoord;	// テクスチャの座標を表す変数として指定してるっぽい
 	
 		// uniformはグローバル変数のようだ。WebGL APIを通してJavaScriptから行列を設定してるぞ
 		uniform mat4 uMVMatrix;		// モデルを移動させる行列みたい
 		uniform mat4 uPMatrix;		// モデルを画面に投影させる行列みたい
 
-		varying lowp vec4 vColor;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
+		varying highp vec2 vTextureCoord;	// varyingはvertexシェーダーとfragmentシェーダー間のインタフェースらしいぞ
 		
 		void main(void) {
 			// gl_Positionは頂点座標を設定する組み込み変数のようだ
 			// 頂点座標に、移動させ行列と画面に投影させる行列かけて、画面上の頂点座標を求める
 			gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
 
-			// シェーダー間の変数に頂点カラーを設定する。
-			// あれ、vertexシェーダーの方ではgl_FragColorの設定はしないんだな。
-			// fragmentシェーダーと言いながら、カラーについてはvertexの分も設定してるのか？
-			vColor = aVertexColor;
-			// つか、fragmentシェーダーではこの変数まんま使ってるけど、グラフィックボード側で色の補完をしてくれてるんだよな？
+			// シェーダー間の変数にテクスチャ座標を設定する。
+			vTextureCoord = aTextureCoord;
 		}
 	</script>
 
